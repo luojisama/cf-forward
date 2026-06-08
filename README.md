@@ -1,6 +1,6 @@
 # cf-forward
 
-部署到 **Cloudflare Workers** 的**无状态透明反向代理**，让国内用户能访问 Steam Web API（CS Major 竞猜 / 战绩）、Pixiv（鉴权 + 数据接口 + 图片）、Bangumi 图片。
+部署到 **Cloudflare Workers** 的**无状态透明反向代理**，让国内用户能访问 Steam Web API（CS Major 竞猜 / 战绩）、Pixiv 图片、Bangumi 图片。
 
 核心原则：**客户端照常把 `key / token / 验证码(steamidkey) / knowncode` 带在请求里**，Worker 只改写「域名 + 路径」并在上游有防盗链处注入 `Referer`，再原样回传响应。所以：
 
@@ -14,12 +14,12 @@
 |---|---|---|
 | `/steam/cs/major/<...>` | `https://api.steampowered.com/ICSGOTournaments_730/<...>` | CS Major 竞猜管理。`steamidkey` = 竞猜管理验证码，`key` = 开发者 key，由客户端在 query 带入 |
 | `/steam/cs/record/<...>` | `https://api.steampowered.com/ICSGOPlayers_730/<...>` | 战绩 / 比赛记录。`steamidkey` = 比赛记录验证码。上游严格限流，429/503 原样回传 |
-| `/pixiv/auth/<...>` | `https://oauth.secure.pixiv.net/auth/<...>` | 获取 / 刷新 token（POST） |
-| `/pixiv/app/<...>` | `https://app-api.pixiv.net/<...>` | 数据接口，透传 `Authorization: Bearer` |
 | `/pixiv/img/<...>` | `https://i.pximg.net/<...>` | 图片，自动注入 `Referer` 绕过 403 + 边缘缓存 |
 | `/bgm/pic/<...>` | `https://lain.bgm.tv/pic/<...>` | Bangumi 图片，注入 `Referer` + 边缘缓存 |
 
 **映射规则**：剥掉前缀，把剩余 path + query 拼到上游后面。官方接口新增方法**无需改代码**，自动可用。扩展新上游只需在 [`src/routes.ts`](src/routes.ts) 加一行。
+
+> ⚠️ **Pixiv 的 token 鉴权（`oauth.secure.pixiv.net`）与数据接口（`app-api.pixiv.net`）未提供**：这两个上游在 Cloudflare 后面、会拦截来自 CF Workers 出口的请求（返回 403 机器人挑战页，基于出口 IP/指纹，改请求头无法绕过）。如需 token / 数据接口，请用**非 CF 出口**的代理（Deno Deploy / Vercel / 日本 VPS）承载。Pixiv 图片（`i.pximg.net`，另一套 CDN）不受影响，正常可用。
 
 ---
 
@@ -87,27 +87,14 @@ npm run deploy
 
 ## 自动部署（CI/CD）
 
-仓库 `https://github.com/luojisama/cf-forward` 已配置 GitHub Actions（[.github/workflows/deploy.yml](.github/workflows/deploy.yml)）：**push 到 `main` 即自动 `wrangler deploy`**，也可在仓库 Actions 页手动触发（workflow_dispatch）。
+通过 **Cloudflare Workers Builds（Connect to Git）** 部署：在 Cloudflare 控制台把本仓库连上后，**push 到 `main` 即由 Cloudflare 自动构建并部署**（无需 GitHub Actions）。
 
-### 需在仓库配置 3 个 Secret
+一次性配置：
 
-Settings → Secrets and variables → Actions（或用 `gh secret set`）：
-
-| Secret | 说明 | 获取方式 |
-|---|---|---|
-| `CLOUDFLARE_API_TOKEN` | 部署用 API Token | CF 控制台 → My Profile → API Tokens → Create Token → 用 **Edit Cloudflare Workers** 模板 |
-| `CLOUDFLARE_ACCOUNT_ID` | 账户 ID | CF 控制台 → Workers & Pages → 右侧 Account ID |
-| `ACCESS_TOKEN` | 代理访问令牌 | 自定；每次部署会自动同步为 worker 的 Secret，**无需再手动** `wrangler secret put` |
-
-命令行设置：
-
-```bash
-gh secret set CLOUDFLARE_API_TOKEN
-gh secret set CLOUDFLARE_ACCOUNT_ID
-gh secret set ACCESS_TOKEN
-```
-
-配好后，对 `main` 的任何提交都会自动重新部署；首次可在 Actions 页手动触发一次验证。自定义域名仍在 [`wrangler.jsonc`](wrangler.jsonc) 的 `routes` 配置。
+- **运行时令牌**：Workers & Pages → `cf-forward` → **Settings → Variables and Secrets**，添加**类型为 Secret** 的 `ACCESS_TOKEN`（值即客户端请求要带的令牌）。
+  - ⚠️ 必须是 **Secret** 类型：若设为明文 **Variable**，下次构建跑 `wrangler deploy` 会按 `wrangler.jsonc`（未声明它）把它**冲掉**，导致运行时读不到、一律 `401`。
+  - ⚠️ 密钥**只写不可读**，忘了只能覆盖重设（`wrangler secret put ACCESS_TOKEN` 或控制台编辑）。
+- **自定义域名**：在 [`wrangler.jsonc`](wrangler.jsonc) 的 `routes` 配置，或在控制台为 Worker 绑定。当前生产域名 `forward.shiro.team`。
 
 ---
 
@@ -118,7 +105,6 @@ gh secret set ACCESS_TOKEN
 | 原始 | 改写后 |
 |---|---|
 | `https://api.steampowered.com/ICSGOPlayers_730/GetNextMatchSharingCode/v1?...` | `https://你的域名/steam/cs/record/GetNextMatchSharingCode/v1?...&_token=XXX` |
-| `https://app-api.pixiv.net/v1/illust/detail?...` | `https://你的域名/pixiv/app/v1/illust/detail?...`（头带 `X-Proxy-Token`） |
 | `https://i.pximg.net/img-original/img/.../p0.jpg` | `https://你的域名/pixiv/img/img-original/img/.../p0.jpg?_token=XXX` |
 | `https://lain.bgm.tv/pic/cover/l/.../x.jpg` | `https://你的域名/bgm/pic/cover/l/.../x.jpg?_token=XXX` |
 
@@ -126,7 +112,7 @@ gh secret set ACCESS_TOKEN
 
 ## 可选增强（默认关闭）
 
-- 把 `/pixiv/app` 响应 JSON 里的 `i.pximg.net` 改写为 `<本域名>/pixiv/img`，让客户端图片也自动走代理（需缓冲 + 替换，牺牲纯透传）。
+- Pixiv token / 数据接口：另起**非 CF 出口**代理（Deno Deploy / Vercel / 日本 VPS）承载，CF 仍可作统一入口转发过去。
 - 扩展 `api.bgm.tv` 数据接口、其它 Steam `I*_730` 接口：在 [`src/routes.ts`](src/routes.ts) 加一行。
 - 按上游分别限速 / 配额，防单点刷爆 Steam 限流。
 

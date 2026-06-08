@@ -18,12 +18,11 @@ export const ROUTES: Route[] = [
   { prefix: "/steam/cs/major/", upstream: "https://api.steampowered.com/ICSGOTournaments_730/" },
   // Steam 战绩 / 比赛记录（ICSGOPlayers_730）：steamidkey = 比赛记录验证码
   { prefix: "/steam/cs/record/", upstream: "https://api.steampowered.com/ICSGOPlayers_730/" },
-  // Pixiv 鉴权（获取/刷新 token）
-  { prefix: "/pixiv/auth/", upstream: "https://oauth.secure.pixiv.net/auth/" },
-  // Pixiv 数据接口
-  { prefix: "/pixiv/app/", upstream: "https://app-api.pixiv.net/" },
   // Pixiv 图片（注入 Referer 绕过 403 防盗链 + 缓存）
   { prefix: "/pixiv/img/", upstream: "https://i.pximg.net/", referer: "https://www.pixiv.net/", cache: true },
+  // 注：Pixiv 鉴权(oauth.secure.pixiv.net) 与数据接口(app-api.pixiv.net) 在 Cloudflare 后面、
+  // 会把来自 CF Workers 出口的请求判为机器人并返回 403 挑战页，无法在本 Worker 上提供（实测：
+  // 同请求头，CF 出口 403、住宅出口 200）。如需 token/数据接口，请另起非 CF 出口的代理承载。
   // Bangumi 图片（注入 Referer + 缓存）
   { prefix: "/bgm/pic/", upstream: "https://lain.bgm.tv/pic/", referer: "https://bgm.tv/", cache: true },
 ];
