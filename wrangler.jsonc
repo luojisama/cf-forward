@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cf-forward",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-01",
+  "observability": {
+    "enabled": true
+  }
+
+  // ── 生产部署：绑定自有自定义域名（域名需先托管在 Cloudflare 并开启橙云代理）──
+  // *.workers.dev 在中国大陆被普遍污染/封锁，国内访问必须用自定义域名。
+  // 拥有域名后，取消下面注释并改成你的域名：
+  //
+  // "routes": [
+  //   { "pattern": "proxy.example.com", "custom_domain": true }
+  // ]
+}
