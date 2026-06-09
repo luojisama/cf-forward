@@ -27,8 +27,8 @@ export const ROUTES: Route[] = [
   // 同请求头，CF 出口 403、住宅出口 200）。如需 token/数据接口，请另起非 CF 出口的代理承载。
   // Bangumi 图片（注入 Referer + 缓存）
   { prefix: "/bgm/pic/", upstream: "https://lain.bgm.tv/pic/", referer: "https://bgm.tv/", cache: true },
-  // Bangumi 数据 API（api.bgm.tv）：搜索/条目/角色等 v0 接口。纯透传——客户端需自带合规 User-Agent；
-  // 认证类接口透传 Authorization: Bearer。不缓存（数据动态/可能含用户态）。
+  // Bangumi 数据 API（api.bgm.tv）：搜索/条目/角色等 v0 接口。纯透传——建议客户端带合规 User-Agent
+  // （Bangumi 封禁 requests/axios 等库默认 UA）；认证类接口透传 Authorization: Bearer。不缓存（数据动态/含用户态）。
   { prefix: "/bgm/api/", upstream: "https://api.bgm.tv/" },
 ];
 
