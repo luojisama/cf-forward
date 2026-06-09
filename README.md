@@ -17,6 +17,7 @@
 | `/steam/user/<...>` | `https://api.steampowered.com/ISteamUser/<...>` | 用户资料。`GetPlayerSummaries`（头像/昵称）、`ResolveVanityURL`（vanity→steamid）等。需开发者 `key` |
 | `/pixiv/img/<...>` | `https://i.pximg.net/<...>` | 图片，自动注入 `Referer` 绕过 403 + 边缘缓存 |
 | `/bgm/pic/<...>` | `https://lain.bgm.tv/pic/<...>` | Bangumi 图片，注入 `Referer` + 边缘缓存 |
+| `/bgm/api/<...>` | `https://api.bgm.tv/<...>` | Bangumi 数据 API（搜索/条目/角色等 v0 接口）。**客户端须带合规 `User-Agent`**；认证接口透传 `Authorization: Bearer`。不缓存 |
 
 **映射规则**：剥掉前缀，把剩余 path + query 拼到上游后面。官方接口新增方法**无需改代码**，自动可用。扩展新上游只需在 [`src/routes.ts`](src/routes.ts) 加一行。
 
