@@ -14,6 +14,7 @@
 |---|---|---|
 | `/steam/cs/major/<...>` | `https://api.steampowered.com/ICSGOTournaments_730/<...>` | CS Major 竞猜管理。`steamidkey` = 竞猜管理验证码，`key` = 开发者 key，由客户端在 query 带入 |
 | `/steam/cs/record/<...>` | `https://api.steampowered.com/ICSGOPlayers_730/<...>` | 战绩 / 比赛记录。`steamidkey` = 比赛记录验证码。上游严格限流，429/503 原样回传 |
+| `/steam/user/<...>` | `https://api.steampowered.com/ISteamUser/<...>` | 用户资料。`GetPlayerSummaries`（头像/昵称）、`ResolveVanityURL`（vanity→steamid）等。需开发者 `key` |
 | `/pixiv/img/<...>` | `https://i.pximg.net/<...>` | 图片，自动注入 `Referer` 绕过 403 + 边缘缓存 |
 | `/bgm/pic/<...>` | `https://lain.bgm.tv/pic/<...>` | Bangumi 图片，注入 `Referer` + 边缘缓存 |
 

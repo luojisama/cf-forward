@@ -18,6 +18,8 @@ export const ROUTES: Route[] = [
   { prefix: "/steam/cs/major/", upstream: "https://api.steampowered.com/ICSGOTournaments_730/" },
   // Steam 战绩 / 比赛记录（ICSGOPlayers_730）：steamidkey = 比赛记录验证码
   { prefix: "/steam/cs/record/", upstream: "https://api.steampowered.com/ICSGOPlayers_730/" },
+  // Steam 用户资料（ISteamUser）：GetPlayerSummaries(头像/昵称)、ResolveVanityURL(vanity→steamid) 等，需开发者 key
+  { prefix: "/steam/user/", upstream: "https://api.steampowered.com/ISteamUser/" },
   // Pixiv 图片（注入 Referer 绕过 403 防盗链 + 缓存）
   { prefix: "/pixiv/img/", upstream: "https://i.pximg.net/", referer: "https://www.pixiv.net/", cache: true },
   // 注：Pixiv 鉴权(oauth.secure.pixiv.net) 与数据接口(app-api.pixiv.net) 在 Cloudflare 后面、
