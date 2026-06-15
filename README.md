@@ -18,8 +18,26 @@
 | `/pixiv/img/<...>` | `https://i.pximg.net/<...>` | 图片，自动注入 `Referer` 绕过 403 + 边缘缓存 |
 | `/bgm/pic/<...>` | `https://lain.bgm.tv/pic/<...>` | Bangumi 图片，注入 `Referer` + 边缘缓存 |
 | `/bgm/api/<...>` | `https://api.bgm.tv/<...>` | Bangumi 数据 API（搜索/条目/角色等 v0 接口）。**客户端建议带合规 `User-Agent`**（Bangumi 会封禁 `requests`/`axios` 等库默认 UA）；认证接口透传 `Authorization: Bearer`。不缓存 |
+| `/twitter/api/<...>` | `https://api.twitter.com/<...>` | Twitter / X API v2。纯透传，客户端自带 `Authorization: Bearer <token>`。发推 / 转发（retweet）等 POST 也走这里（需用户上下文 OAuth token）。不缓存 |
 
 **映射规则**：剥掉前缀，把剩余 path + query 拼到上游后面。官方接口新增方法**无需改代码**，自动可用。扩展新上游只需在 [`src/routes.ts`](src/routes.ts) 加一行。
+
+### 便捷接口：自动获取指定用户最新推文
+
+X API v2 取「某人最新推文」需要两跳（用户名 → 用户 ID → 时间线），纯透传一次只能转一跳，故单独封装在 [`src/twitter.ts`](src/twitter.ts)：
+
+```
+GET /twitter/user/tweets?username=<用户名>&max_results=10&_token=<令牌>
+Authorization: Bearer <X API token>      # 或浏览器等无法设头时用 ?bearer=<token>
+```
+
+- `username` **必填**（可带或不带 `@`）。
+- 上游 X 的 Bearer：优先 `Authorization: Bearer` 头，其次 `?bearer=`。
+- 除 `username` / `_token` / `bearer` 外的 query 参数（`max_results`、`tweet.fields`、`expansions`、`exclude`、`pagination_token`、`since_id`、`start_time` 等）**原样透传**给时间线接口。
+- 默认带 `max_results=10`、`tweet.fields=created_at,public_metrics,referenced_tweets,lang`（客户端显式传同名参数则以客户端为准）。
+- 上游错误（401 token 无效 / 403 权限不足 / 429 限流 / 用户名不存在）**原样回传**，便于排查。
+
+> ⚠️ X API 需要付费/有额度的 Bearer token，本项目不存储、由客户端自带。CF Workers 出口访问 `api.twitter.com` 一般正常（面向服务端的 API），若遇区域性拦截，同 Pixiv 说明，需改用非 CF 出口承载。
 
 > ⚠️ **Pixiv 的 token 鉴权（`oauth.secure.pixiv.net`）与数据接口（`app-api.pixiv.net`）未提供**：这两个上游在 Cloudflare 后面、会拦截来自 CF Workers 出口的请求（返回 403 机器人挑战页，基于出口 IP/指纹，改请求头无法绕过）。如需 token / 数据接口，请用**非 CF 出口**的代理（Deno Deploy / Vercel / 日本 VPS）承载。Pixiv 图片（`i.pximg.net`，另一套 CDN）不受影响，正常可用。
 
@@ -64,6 +82,14 @@ curl -o a.jpg "http://127.0.0.1:8787/pixiv/img/img-original/img/2023/01/01/00/00
 
 # Bangumi 图片
 curl -o c.jpg "http://127.0.0.1:8787/bgm/pic/cover/l/aa/bb/12345_abcd.jpg?_token=test123"
+
+# Twitter：自动取指定用户最新推文（用户名→ID→时间线，两跳）
+curl "http://127.0.0.1:8787/twitter/user/tweets?username=jack&max_results=5&_token=test123" \
+  -H "Authorization: Bearer <X_API_TOKEN>"
+
+# Twitter：纯透传（任意 X API v2 端点，含发推/转发等 POST）
+curl "http://127.0.0.1:8787/twitter/api/2/users/by/username/jack?_token=test123" \
+  -H "Authorization: Bearer <X_API_TOKEN>"
 
 # 鉴权失败 → 401
 curl -i "http://127.0.0.1:8787/bgm/pic/cover/l/aa/bb/12345_abcd.jpg"
@@ -121,7 +147,8 @@ npm run deploy
 ## 结构
 
 ```
-src/index.ts    入口：OPTIONS / 鉴权 / 路由匹配 / 分发 / 统一错误与 CORS
-src/routes.ts   路由表（前缀 → 上游 + referer + cache）—— 扩展点
+src/index.ts    入口：OPTIONS / 鉴权 / 便捷接口 / 路由匹配 / 分发 / 统一错误与 CORS
+src/routes.ts   路由表（前缀 → 上游 + referer + cache）—— 纯透传扩展点
 src/proxy.ts    forward()：清洗头、注入 Referer、fetch、组装响应、缓存
+src/twitter.ts  便捷接口：自动取指定用户最新推文（用户名→ID→时间线，两跳）
 ```

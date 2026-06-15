@@ -1,5 +1,9 @@
 import { matchRoute, ROUTES } from "./routes";
 import { forward, preflightResponse, corsHeaders } from "./proxy";
+import { fetchUserTweets } from "./twitter";
+
+/** 路由表之外的便捷接口（需自定义多跳逻辑，非纯透传），仅用于根路径展示 */
+const EXTRA_ENDPOINTS = ["/twitter/user/tweets"];
 
 export interface Env {
   /** 访问令牌，用 `wrangler secret put ACCESS_TOKEN` 注入；未配置则一律拒绝 */
@@ -15,7 +19,10 @@ export default {
 
     // 健康检查 / 根路径（公开，仅列出支持的前缀）
     if (url.pathname === "/" || url.pathname === "/favicon.ico") {
-      return json({ ok: true, service: "cf-forward", routes: ROUTES.map((r) => r.prefix) }, 200);
+      return json(
+        { ok: true, service: "cf-forward", routes: [...ROUTES.map((r) => r.prefix), ...EXTRA_ENDPOINTS] },
+        200,
+      );
     }
 
     // 令牌校验
@@ -23,13 +30,21 @@ export default {
       return json({ error: "unauthorized", hint: "带上 X-Proxy-Token 头，或 ?_token= 查询参数" }, 401);
     }
 
-    // 路由匹配
-    const matched = matchRoute(url.pathname);
-    if (!matched) {
-      return json({ error: "not_found", hint: "未知路径", supported: ROUTES.map((r) => r.prefix) }, 404);
-    }
-
     try {
+      // 便捷接口：自动获取指定用户最新推文（用户名→ID→时间线，两跳）
+      if (url.pathname === "/twitter/user/tweets") {
+        return await fetchUserTweets(request, url);
+      }
+
+      // 路由匹配（纯透传）
+      const matched = matchRoute(url.pathname);
+      if (!matched) {
+        return json(
+          { error: "not_found", hint: "未知路径", supported: [...ROUTES.map((r) => r.prefix), ...EXTRA_ENDPOINTS] },
+          404,
+        );
+      }
+
       return await forward(request, matched.route, matched.rest, ctx);
     } catch (err) {
       return json({ error: "bad_gateway", detail: String(err) }, 502);
