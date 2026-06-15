@@ -33,7 +33,7 @@ export default {
     try {
       // 便捷接口：自动获取指定用户最新推文（用户名→ID→时间线，两跳）
       if (url.pathname === "/twitter/user/tweets") {
-        return await fetchUserTweets(request, url);
+        return await fetchUserTweets(url);
       }
 
       // 路由匹配（纯透传）

@@ -30,10 +30,10 @@ export const ROUTES: Route[] = [
   // Bangumi 数据 API（api.bgm.tv）：搜索/条目/角色等 v0 接口。纯透传——建议客户端带合规 User-Agent
   // （Bangumi 封禁 requests/axios 等库默认 UA）；认证类接口透传 Authorization: Bearer。不缓存（数据动态/含用户态）。
   { prefix: "/bgm/api/", upstream: "https://api.bgm.tv/" },
-  // Twitter / X API v2（api.twitter.com）：纯透传。客户端自带 `Authorization: Bearer <token>`。
-  // 例：/twitter/api/2/users/by/username/:name、/twitter/api/2/users/:id/tweets；
-  // 发推/转发(retweet) 等 POST 也走这里（需用户上下文 OAuth token，由客户端自带）。不缓存。
-  // 便捷接口「自动取指定用户最新推文」见 src/twitter.ts（/twitter/user/tweets）。
+  // Twitter / X 官方 API v2（api.twitter.com）：纯透传，需付费 token，客户端自带 `Authorization: Bearer`。
+  // 发推 / 转发(retweet) 等需用户上下文 OAuth 的 POST 走这里。不缓存。
+  // 注：「自动取指定用户最新推文」改走免费的 syndication 接口（见 src/twitter.ts，/twitter/user/tweets），
+  // 无需付费 API。此透传路由仅为需要官方 API 的场景（如发推/转发）保留。
   { prefix: "/twitter/api/", upstream: "https://api.twitter.com/" },
 ];
 
