@@ -1,6 +1,6 @@
 # cf-forward
 
-部署到 **Cloudflare Workers** 的**无状态透明反向代理**，让国内用户能访问 Steam Web API（CS Major 竞猜 / 战绩）、Pixiv 图片、Bangumi 图片。
+部署到 **Cloudflare Workers** 的**无状态透明反向代理**，让国内用户能访问 Steam Web API（CS Major 竞猜 / 战绩）、Pixiv 图片、Bangumi 图片、X/Twitter 媒体与嵌入、GitHub raw/API/下载资源。
 
 核心原则：**客户端照常把 `key / token / 验证码(steamidkey) / knowncode` 带在请求里**，Worker 只改写「域名 + 路径」并在上游有防盗链处注入 `Referer`，再原样回传响应。所以：
 
@@ -20,6 +20,14 @@
 | `/bgm/api/<...>` | `https://api.bgm.tv/<...>` | Bangumi 数据 API（搜索/条目/角色等 v0 接口）。**客户端建议带合规 `User-Agent`**（Bangumi 会封禁 `requests`/`axios` 等库默认 UA）；认证接口透传 `Authorization: Bearer`。不缓存 |
 | `/twitter/user/tweets?username=<...>` | `https://syndication.twitter.com/...`（嵌入 widget 接口） | **自动获取指定用户最新推文，免官方付费 API、免鉴权**。详见下文 |
 | `/twitter/api/<...>` | `https://api.twitter.com/<...>` | X 官方 API v2 纯透传，需**付费** token（客户端自带 `Authorization: Bearer`）。仅为发推 / 转发（retweet）等需官方 API 的场景保留。不缓存 |
+| `/x/oembed/` | `https://publish.x.com/oembed` | X/Twitter 推文嵌入 JSON；文本响应会 best-effort 改写其中的脚本、媒体域名 |
+| `/x/media/<...>` | `https://pbs.twimg.com/<...>` | X/Twitter 图片，注入 `Referer` + 边缘缓存 |
+| `/x/video/<...>` | `https://video.twimg.com/<...>` | X/Twitter 视频资源，注入 `Referer`，不缓存 Range/分片响应 |
+| `/x/web/<...>` | `https://x.com/<...>` | X 页面 best-effort 透传与文本域名改写；不保证完整交互网页可用 |
+| `/github/raw/<...>` | `https://raw.githubusercontent.com/<...>` | GitHub raw 文件透明透传 |
+| `/github/api/<...>` | `https://api.github.com/<...>` | GitHub API 透明透传；认证接口透传 `Authorization` |
+| `/github/codeload/<...>` | `https://codeload.github.com/<...>` | GitHub 源码包下载透明透传 |
+| `/github/web/<...>` | `https://github.com/<...>` | GitHub 页面 best-effort 透传与文本域名改写 |
 
 **映射规则**：剥掉前缀，把剩余 path + query 拼到上游后面。官方接口新增方法**无需改代码**，自动可用。扩展新上游只需在 [`src/routes.ts`](src/routes.ts) 加一行。
 
@@ -41,6 +49,47 @@ GET /twitter/user/tweets?username=<用户名>&max_results=20&exclude=replies,ret
 > 说明：syndication 是只读的公开嵌入接口，仅能取**公开**账号的推文，不支持发推 / 转发等写操作——写操作需官方付费 API（走上面的 `/twitter/api/` 透传，客户端自带用户 token）。CF Workers 出口访问 `syndication.twitter.com` 实测正常。
 
 > ⚠️ **Pixiv 的 token 鉴权（`oauth.secure.pixiv.net`）与数据接口（`app-api.pixiv.net`）未提供**：这两个上游在 Cloudflare 后面、会拦截来自 CF Workers 出口的请求（返回 403 机器人挑战页，基于出口 IP/指纹，改请求头无法绕过）。如需 token / 数据接口，请用**非 CF 出口**的代理（Deno Deploy / Vercel / 日本 VPS）承载。Pixiv 图片（`i.pximg.net`，另一套 CDN）不受影响，正常可用。
+
+### X/Twitter 展示说明
+
+X/Twitter 的完整网页高度依赖登录态、反爬策略、前端脚本和 CSP，**不能保证只靠 Workers 域名替换就完整打开 x.com 页面**。本项目做了可控范围内的增强：
+
+- 优先尝试展示推文：走 `/x/oembed/` 转发 `publish.x.com/oembed`，返回 JSON 中的 `platform.x.com`、`pbs.twimg.com` 等域名会 best-effort 改写到本项目对应前缀。
+- 推荐展示图片 / 视频：走 `/x/media/`、`/x/video/`；图片会缓存，视频因常见 Range/分片请求只做透传。
+- `/x/web/` 与 `/twitter/web/` 只是 best-effort 页面透传。公开页面可能成功，登录、交互、无限滚动等不作为可靠能力承诺。
+
+常用 X/Twitter 前缀：
+
+| 本项目路径 | 官方上游 |
+|---|---|
+| `/x/oembed/` | `https://publish.x.com/oembed` |
+| `/x/publish/<...>` | `https://publish.x.com/<...>` |
+| `/x/platform/<...>` | `https://platform.x.com/<...>` |
+| `/x/syndication/<...>` | `https://syndication.twitter.com/<...>` |
+| `/x/syndication-cdn/<...>` | `https://cdn.syndication.twimg.com/<...>` |
+| `/x/media/<...>` | `https://pbs.twimg.com/<...>` |
+| `/x/video/<...>` | `https://video.twimg.com/<...>` |
+| `/x/abs/<...>` | `https://abs.twimg.com/<...>` |
+| `/x/api/<...>` | `https://api.x.com/<...>` |
+| `/twitter/api/<...>` | `https://api.twitter.com/<...>` |
+| `/x/web/<...>` | `https://x.com/<...>` |
+| `/twitter/web/<...>` | `https://twitter.com/<...>` |
+
+### GitHub 转发前缀
+
+GitHub 的 raw/API/下载资源按透明透传处理；`/github/web/` 和 `/github/assets/` 会对小型文本响应做 best-effort 域名改写，方便页面里继续通过本项目域名请求资源。
+
+| 本项目路径 | 官方上游 |
+|---|---|
+| `/github/raw/<...>` | `https://raw.githubusercontent.com/<...>` |
+| `/github/api/<...>` | `https://api.github.com/<...>` |
+| `/github/codeload/<...>` | `https://codeload.github.com/<...>` |
+| `/github/assets/<...>` | `https://github.githubassets.com/<...>` |
+| `/github/avatars/<...>` | `https://avatars.githubusercontent.com/<...>` |
+| `/github/objects/<...>` | `https://objects.githubusercontent.com/<...>` |
+| `/github/user-images/<...>` | `https://user-images.githubusercontent.com/<...>` |
+| `/github/private-user-images/<...>` | `https://private-user-images.githubusercontent.com/<...>` |
+| `/github/web/<...>` | `https://github.com/<...>` |
 
 ---
 
@@ -73,11 +122,6 @@ curl "http://127.0.0.1:8787/steam/cs/record/GetNextMatchSharingCode/v1?key=K&ste
 # 竞猜：取赛事 layout
 curl "http://127.0.0.1:8787/steam/cs/major/GetTournamentLayout/v1?event=21&_token=test123"
 
-# Pixiv 刷新 token
-curl -X POST "http://127.0.0.1:8787/pixiv/auth/token" \
-  -H "X-Proxy-Token: test123" \
-  -d "grant_type=refresh_token&client_id=...&client_secret=...&refresh_token=..."
-
 # Pixiv 图片（直连 i.pximg.net 会 403，这里应得 200）
 curl -o a.jpg "http://127.0.0.1:8787/pixiv/img/img-original/img/2023/01/01/00/00/00/12345678_p0.jpg?_token=test123"
 
@@ -90,6 +134,15 @@ curl "http://127.0.0.1:8787/twitter/user/tweets?username=Lyytoaoitori&max_result
 # Twitter：官方 API 纯透传（发推/转发等写操作，需付费 token，客户端自带）
 curl "http://127.0.0.1:8787/twitter/api/2/users/by/username/jack?_token=test123" \
   -H "Authorization: Bearer <X_API_TOKEN>"
+
+# X/Twitter oEmbed（把 url 换成真实推文 URL）
+curl "http://127.0.0.1:8787/x/oembed/?url=https%3A%2F%2Fx.com%2Fjack%2Fstatus%2F20&_token=test123"
+
+# X/Twitter 图片
+curl -o tw.jpg "http://127.0.0.1:8787/x/media/media/example.jpg?_token=test123"
+
+# GitHub raw
+curl "http://127.0.0.1:8787/github/raw/octocat/Hello-World/master/README?_token=test123"
 
 # 鉴权失败 → 401
 curl -i "http://127.0.0.1:8787/bgm/pic/cover/l/aa/bb/12345_abcd.jpg"
@@ -124,6 +177,22 @@ npm run deploy
   - ⚠️ 密钥**只写不可读**，忘了只能覆盖重设（`wrangler secret put ACCESS_TOKEN` 或控制台编辑）。
 - **自定义域名**：在 [`wrangler.jsonc`](wrangler.jsonc) 的 `routes` 配置，或在控制台为 Worker 绑定。当前生产域名 `forward.shiro.team`。
 
+### GitHub Actions 部署（可选）
+
+仓库内也提供 [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)。相比旧版 `cloudflare/wrangler-action@v3` 的 `secrets:` 上传流程，它直接调用本仓库锁定的 `npx wrangler deploy --keep-vars --secrets-file .wrangler/secrets.json`：
+
+- 首次部署时不再因为 Worker 尚未创建而卡在 “Uploading secrets...”。
+- `ACCESS_TOKEN` 会随本次部署作为 Worker Secret 一起上传，不写入代码或日志。
+- `--keep-vars` 会保留控制台里已有的变量 / Secret，避免部署时被清空。
+
+需要在 GitHub 仓库 `Settings → Secrets and variables → Actions` 配置 3 个 Secret：
+
+| GitHub Secret | 用途 |
+|---|---|
+| `CLOUDFLARE_API_TOKEN` | Cloudflare API Token；建议使用 Cloudflare 的 “Edit Cloudflare Workers” 模板，若通过 `routes` 绑定域名，还需对应 Zone 的 Worker Routes 权限 |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare Account ID |
+| `ACCESS_TOKEN` | 本项目运行时鉴权令牌，即客户端请求要带的 `X-Proxy-Token` / `_token` |
+
 ---
 
 ## 客户端改写示例
@@ -135,12 +204,17 @@ npm run deploy
 | `https://api.steampowered.com/ICSGOPlayers_730/GetNextMatchSharingCode/v1?...` | `https://你的域名/steam/cs/record/GetNextMatchSharingCode/v1?...&_token=XXX` |
 | `https://i.pximg.net/img-original/img/.../p0.jpg` | `https://你的域名/pixiv/img/img-original/img/.../p0.jpg?_token=XXX` |
 | `https://lain.bgm.tv/pic/cover/l/.../x.jpg` | `https://你的域名/bgm/pic/cover/l/.../x.jpg?_token=XXX` |
+| `https://publish.x.com/oembed?url=https%3A%2F%2Fx.com%2Fu%2Fstatus%2F123` | `https://你的域名/x/oembed/?url=https%3A%2F%2Fx.com%2Fu%2Fstatus%2F123&_token=XXX` |
+| `https://pbs.twimg.com/media/xxx.jpg` | `https://你的域名/x/media/media/xxx.jpg?_token=XXX` |
+| `https://raw.githubusercontent.com/owner/repo/main/file.txt` | `https://你的域名/github/raw/owner/repo/main/file.txt?_token=XXX` |
+| `https://codeload.github.com/owner/repo/zip/refs/heads/main` | `https://你的域名/github/codeload/owner/repo/zip/refs/heads/main?_token=XXX` |
 
 ---
 
 ## 可选增强（默认关闭）
 
 - Pixiv token / 数据接口：另起**非 CF 出口**代理（Deno Deploy / Vercel / 日本 VPS）承载，CF 仍可作统一入口转发过去。
+- X/Twitter 完整页面：当前只做 best-effort 文本域名改写；需要稳定展示推文时优先使用 `/x/oembed/`，需要稳定媒体时优先使用 `/x/media/` / `/x/video/`。
 - 扩展 `api.bgm.tv` 数据接口、其它 Steam `I*_730` 接口：在 [`src/routes.ts`](src/routes.ts) 加一行。
 - 按上游分别限速 / 配额，防单点刷爆 Steam 限流。
 
