@@ -176,22 +176,7 @@ npm run deploy
   - ⚠️ 必须是 **Secret** 类型：若设为明文 **Variable**，下次构建跑 `wrangler deploy` 会按 `wrangler.jsonc`（未声明它）把它**冲掉**，导致运行时读不到、一律 `401`。
   - ⚠️ 密钥**只写不可读**，忘了只能覆盖重设（`wrangler secret put ACCESS_TOKEN` 或控制台编辑）。
 - **自定义域名**：在 [`wrangler.jsonc`](wrangler.jsonc) 的 `routes` 配置，或在控制台为 Worker 绑定。当前生产域名 `forward.shiro.team`。
-
-### GitHub Actions 部署（可选）
-
-仓库内也提供 [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)。相比旧版 `cloudflare/wrangler-action@v3` 的 `secrets:` 上传流程，它直接调用本仓库锁定的 `npx wrangler deploy --keep-vars --secrets-file .wrangler/secrets.json`：
-
-- 首次部署时不再因为 Worker 尚未创建而卡在 “Uploading secrets...”。
-- `ACCESS_TOKEN` 会随本次部署作为 Worker Secret 一起上传，不写入代码或日志。
-- `--keep-vars` 会保留控制台里已有的变量 / Secret，避免部署时被清空。
-
-需要在 GitHub 仓库 `Settings → Secrets and variables → Actions` 配置 3 个 Secret：
-
-| GitHub Secret | 用途 |
-|---|---|
-| `CLOUDFLARE_API_TOKEN` | Cloudflare API Token；建议使用 Cloudflare 的 “Edit Cloudflare Workers” 模板，若通过 `routes` 绑定域名，还需对应 Zone 的 Worker Routes 权限 |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare Account ID |
-| `ACCESS_TOKEN` | 本项目运行时鉴权令牌，即客户端请求要带的 `X-Proxy-Token` / `_token` |
+- **不要再启用 GitHub Actions 部署**：本项目已由 Cloudflare Workers Builds 接管 CI/CD。仓库不需要 `.github/workflows/deploy.yml`，也不需要在 GitHub Actions Secrets 里配置 `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` / `ACCESS_TOKEN`；否则 GitHub 会额外跑一个无用的 deploy check，和 Cloudflare 控制台部署重复。
 
 ---
 
